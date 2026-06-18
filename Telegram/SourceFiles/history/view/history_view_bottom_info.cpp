@@ -77,6 +77,16 @@ namespace {
 	return map.back().text;
 }
 
+[[nodiscard]] QString RoundVideoDateSuffix(BottomInfo::Data::Flags flags) {
+	using Flag = BottomInfo::Data::Flag;
+	if (flags & Flag::RoundVideoReal) {
+		return u" real"_q;
+	} else if (flags & Flag::RoundVideoFake) {
+		return u" fake"_q;
+	}
+	return QString();
+}
+
 } // namespace
 
 struct BottomInfo::Effect {
@@ -481,13 +491,14 @@ void BottomInfo::layoutDateText() {
 		const auto name = _authorElided
 			? st::msgDateFont->elided(author, maxWidth - afterAuthorWidth)
 			: author;
+		const auto roundMark = RoundVideoDateSuffix(_data.flags);
 		const auto full = (_data.flags & Data::Flag::Sponsored)
 			? QString()
 			: (_data.flags & Data::Flag::Imported)
-			? (deleted + date + ' ' + tr::lng_imported(tr::now))
+			? (deleted + date + roundMark + ' ' + tr::lng_imported(tr::now))
 			: name.isEmpty()
-			? (deleted + date)
-			: (deleted + name + afterAuthor);
+			? (deleted + date + roundMark)
+			: (deleted + name + afterAuthor + roundMark);
 		auto helper = Ui::Text::CustomEmojiHelper(
 			Core::TextContext({ .session = &_reactionsOwner->session() }));
 		auto marked = TextWithEntities();
@@ -554,9 +565,11 @@ void BottomInfo::layoutDateText() {
 			? Ui::FormatDateTimeSavedFrom(_data.date)
 			: formatMessageTime(_data.date.time());
 
+		const auto roundMark = RoundVideoDateSuffix(_data.flags);
 		const auto date = TextWithEntities{}
 			.append(edited)
-			.append(dateStr);
+			.append(dateStr)
+			.append(roundMark);
 
 		const auto afterAuthor = TextWithEntities{}.append(prefix).append(date);
 		const auto afterAuthorWidth = st::msgDateFont->width(afterAuthor.text);
@@ -790,6 +803,16 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 	}
 	if (item->isBurnt()) {
 		result.flags |= Flag::AyuBurnt;
+	}
+	switch (RoundVideoDateMarkFromMessage(item)) {
+	case RoundVideoDateMark::Real:
+		result.flags |= Flag::RoundVideoReal;
+		break;
+	case RoundVideoDateMark::Fake:
+		result.flags |= Flag::RoundVideoFake;
+		break;
+	case RoundVideoDateMark::None:
+		break;
 	}
 	if (!forwarded) {
 		return result;

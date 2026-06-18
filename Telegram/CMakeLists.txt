@@ -1924,6 +1924,8 @@ PRIVATE
     ui/chat/attach/attach_item_single_file_preview.h
     ui/chat/attach/attach_item_single_media_preview.cpp
     ui/chat/attach/attach_item_single_media_preview.h
+    ui/chat/attach/attach_special_media.cpp
+    ui/chat/attach/attach_special_media.h
     ui/chat/choose_send_as.cpp
     ui/chat/choose_send_as.h
     ui/chat/choose_theme_controller.cpp

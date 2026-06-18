@@ -603,6 +603,26 @@ QString getMediaName(not_null<HistoryItem*> message) {
 	return {};
 }
 
+RoundVideoDateMark RoundVideoDateMarkFromMessage(not_null<HistoryItem*> item) {
+	const auto media = item->media();
+	if (!media) {
+		return RoundVideoDateMark::None;
+	}
+	const auto document = media->document();
+	if (!document || !document->isVideoMessage()) {
+		return RoundVideoDateMark::None;
+	}
+	if (!document->date || item->isSending()) {
+		return RoundVideoDateMark::None;
+	}
+	const auto diff = std::abs(
+		int64(item->date()) - int64(document->date));
+	constexpr auto kThreshold = 120;
+	return (diff <= kThreshold)
+		? RoundVideoDateMark::Real
+		: RoundVideoDateMark::Fake;
+}
+
 QString getMediaResolution(not_null<HistoryItem*> message) {
 	if (!message->media()) {
 		return {};

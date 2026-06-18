@@ -2597,6 +2597,124 @@ void VoiceRecordBar::startRecordingAndLock(bool round) {
 	startRecording();
 }
 
+void VoiceRecordBar::showPreparedRound(Ui::RoundVideoResult data) {
+	constexpr auto kMinDuration = crl::time(200);
+	if (data.content.isEmpty() || data.duration < kMinDuration) {
+		return;
+	} else if (isActive()) {
+		return;
+	} else if (_startRecordingFilter && _startRecordingFilter()) {
+		return;
+	}
+	clearResumeState();
+	_recordingVideo = true;
+	_fullRecord = true;
+	{
+		auto sendState = _send->state();
+		sendState.type = Ui::SendButton::Type::Round;
+		_send->setState(std::move(sendState));
+	}
+	_lock->setRecordingVideo(true);
+	if (!createVideoRecorder()) {
+		return;
+	}
+	_data = std::move(data);
+	_recording = true;
+	_paused = false;
+	_lockShowing = false;
+	_inField = true;
+	window()->raise();
+	window()->activateWindow();
+	visibilityAnimate(true, [=] {
+		_listen = std::make_unique<ListenWrap>(
+			this,
+			_st,
+			_send,
+			&_show->session(),
+			&_data,
+			false,
+			_cancelFont);
+		_listenChanges.fire({});
+
+		using SilentPreview = ::Media::Streaming::RoundPreview;
+		_videoRecorder->showPreview(
+			std::make_shared<SilentPreview>(
+				_data.content,
+				_videoRecorder->previewSize()),
+			_listen->videoPreview());
+
+		_level->setType(VoiceRecordButton::Type::Send);
+		_level->clicks(
+		) | rpl::on_next([=] {
+			stop(true);
+		}, _recordingLifetime);
+		rpl::single(
+			false
+		) | rpl::then(
+			_level->actives()
+		) | rpl::on_next([=](bool enter) {
+			_inField = enter;
+		}, _recordingLifetime);
+
+		_paused = true;
+	});
+	show();
+}
+
+void VoiceRecordBar::showPreparedVoice(Ui::RoundVideoResult data) {
+	constexpr auto kMinDuration = crl::time(200);
+	if (data.content.isEmpty() || data.duration < kMinDuration) {
+		return;
+	} else if (isActive()) {
+		return;
+	} else if (_startRecordingFilter && _startRecordingFilter()) {
+		return;
+	}
+	clearResumeState();
+	_recordingVideo = false;
+	_fullRecord = true;
+	{
+		auto sendState = _send->state();
+		sendState.type = Ui::SendButton::Type::Record;
+		_send->setState(std::move(sendState));
+	}
+	_lock->setRecordingVideo(false);
+	_data = std::move(data);
+	_recording = true;
+	_paused = false;
+	_lockShowing = false;
+	_inField = true;
+	window()->raise();
+	window()->activateWindow();
+	visibilityAnimate(true, [=] {
+		_listen = std::make_unique<ListenWrap>(
+			this,
+			_st,
+			_send,
+			&_show->session(),
+			&_data,
+			true,
+			_cancelFont);
+		_listenChanges.fire({});
+
+		_level->setType(VoiceRecordButton::Type::Send);
+		_level->clicks(
+		) | rpl::on_next([=] {
+			stop(true);
+		}, _recordingLifetime);
+		rpl::single(
+			false
+		) | rpl::then(
+			_level->actives()
+		) | rpl::on_next([=](bool enter) {
+			_inField = enter;
+		}, _recordingLifetime);
+
+		_paused = true;
+	});
+	show();
+}
+
 void VoiceRecordBar::startRecording() {
 	if (isRecording()) {
 		return;
@@ -2819,6 +2937,17 @@ void VoiceRecordBar::stop(bool send) {
 		stopRecording(StopType::Listen);
 		_lockShowing = false;
 		return;
+	} else if (send
+		&& isListenState()
+		&& _fullRecord
+		&& !_videoRecorder
+		&& !::Media::Capture::instance()->started()) {
+		requestToSendWithOptions({
+			.ttlSeconds = peekTTLState()
+				? std::numeric_limits<int>::max()
+				: 0,
+		});
+		return;
 	}
 	const auto ttlBeforeHide = peekTTLState();
 	auto disappearanceCallback = [=] {
@@ -2836,6 +2965,7 @@ void VoiceRecordBar::finish() {
 	_inField = false;
 	_redCircleProgress = 0.;
 	_recordingSamples = 0;
+	_recording = false;
 	_paused = false;
 
 	_showAnimation.stop();
@@ -2937,9 +3067,13 @@ void VoiceRecordBar::stopRecording(StopType type, bool ttlBeforeHide) {
 		if (_videoRecorder) {
 			_videoRecorder->hide();
 		}
-		instance()->stop(crl::guard(this, [=](Result &&data) {
+		if (::Media::Capture::instance()->started()) {
+			instance()->stop(crl::guard(this, [=](Result &&data) {
+				_cancelRequests.fire({});
+			}));
+		} else {
 			_cancelRequests.fire({});
-		}));
+		}
 	} else if (type == StopType::Listen) {
 		if (const auto recorder = _videoRecorder.get()) {
 			const auto weak = base::make_weak(recorder);
@@ -3143,7 +3277,7 @@ void VoiceRecordBar::requestToSendWithOptions(Api::SendOptions options) {
 					.waveform = _data.waveform,
 					.duration = _data.duration,
 					.options = options,
-					.video = !_data.minithumbs.isNull(),
+					.video = _recordingVideo,
 				});
 				close();
 			});

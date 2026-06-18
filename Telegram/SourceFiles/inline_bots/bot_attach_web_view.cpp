@@ -26,8 +26,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/tabbed_panel.h"
 #include "core/application.h"
 #include "core/click_handler_types.h"
+#include "core/file_location.h"
 #include "core/local_url_handlers.h"
 #include "core/shortcuts.h"
+#include "core/file_utilities.h"
 #include "core/ui_integration.h" // TextContext
 #include "data/components/location_pickers.h"
 #include "data/data_bot_app.h"
@@ -47,6 +49,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item_helpers.h"
 #include "history/history_item_reply_markup.h"
 #include "info/bot/starref/info_bot_starref_common.h" // MakePeerBubbleButton
+#include "logs.h"
 #include "info/profile/info_profile_values.h"
 #include "inline_bots/inline_bot_result.h"
 #include "inline_bots/inline_bot_confirm_prepared.h"
@@ -56,6 +59,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_app_config.h"
 #include "main/main_domain.h"
+#include "media/audio/media_audio.h"
 #include "main/main_session.h"
 #include "mainwidget.h"
 #include "payments/payments_checkout_process.h"
@@ -66,6 +70,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/basic_click_handlers.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/chat/attach/attach_bot_webview.h"
+#include "ui/chat/attach/attach_special_media.h"
+#include "ui/controls/round_video_recorder.h"
 #include "ui/controls/location_picker.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/effects/ripple_animation.h"
@@ -2720,12 +2726,147 @@ void ChooseAndSendLocation(
 	session->locationPickers().emplace(action, picker);
 }
 
+void ChooseAndSendVoiceFromFile(
+		not_null<Window::SessionController*> controller,
+		Fn<Api::SendAction()> actionFactory,
+		not_null<QWidget*> parentWidget,
+		Fn<void(Ui::RoundVideoResult)> showPreparedVoice) {
+	const auto weak = base::make_weak(controller);
+	const auto dialogParent = QPointer<QWidget>(parentWidget.get());
+	const auto filter = u"Audio files (*.mp3 *.ogg *.opus *.wav *.m4a *.flac *.aac);;"_q
+		+ FileDialog::AllFilesFilter();
+	const auto caption = tr::ayu_attach_voice_from_file(tr::now);
+	const auto afterChosen = crl::guard(dialogParent.data(), [=](
+			FileDialog::OpenResult &&result) {
+		if (result.paths.isEmpty()) {
+			return;
+		}
+		const auto path = result.paths.front();
+		crl::on_main([=] {
+			crl::async([=] {
+				auto prepared = Ui::PrepareVoiceFromFile(path);
+				if (!prepared) {
+					crl::on_main([=] {
+						if (const auto onstack = weak.get()) {
+							onstack->showToast(
+								tr::ayu_attach_voice_from_file_failed(
+									tr::now));
+						}
+					});
+					return;
+				}
+				crl::on_main([=, prepared = std::move(*prepared)]() mutable {
+					if (!weak.get()) {
+						return;
+					}
+					if (prepared.content.isEmpty()) {
+						if (const auto onstack = weak.get()) {
+							onstack->showToast(
+								tr::ayu_attach_voice_from_file_failed(
+									tr::now));
+						}
+						return;
+					}
+					const auto waveform = audioCountWaveform(
+						Core::FileLocation(),
+						prepared.content);
+					auto voice = Ui::RoundVideoResult{
+						.content = std::move(prepared.content),
+						.waveform = waveform,
+						.duration = prepared.duration,
+					};
+					showPreparedVoice(std::move(voice));
+				});
+			});
+		});
+	});
+	const auto parent = dialogParent
+		? dialogParent
+		: QPointer<QWidget>(Core::App().getFileDialogParent());
+	if (!parent) {
+		return;
+	}
+	FileDialog::GetOpenPath(parent, caption, filter, afterChosen);
+}
+
+void ChooseAndSendRoundFromFile(
+		not_null<Window::SessionController*> controller,
+		Fn<Api::SendAction()> actionFactory,
+		not_null<QWidget*> parentWidget,
+		Fn<void(Ui::RoundVideoResult)> showPreparedRound) {
+	const auto weak = base::make_weak(controller);
+	const auto dialogParent = QPointer<QWidget>(parentWidget.get());
+	const auto caption = tr::ayu_attach_round_from_file(tr::now);
+	const auto afterChosen = crl::guard(dialogParent.data(), [=](
+			FileDialog::OpenResult &&result) {
+		if (result.paths.isEmpty()) {
+			return;
+		}
+		const auto path = result.paths.front();
+		crl::on_main([=] {
+			crl::async([=] {
+				auto prepared = Ui::PrepareRoundFromFile(path);
+				if (!prepared) {
+					crl::on_main([=] {
+						if (const auto onstack = weak.get()) {
+							onstack->showToast(
+								tr::ayu_attach_round_from_file_failed(
+									tr::now));
+						}
+					});
+					return;
+				}
+				crl::on_main([=, prepared = std::move(*prepared)]() mutable {
+					if (!weak.get()) {
+						return;
+					}
+					auto content = std::move(prepared.content);
+					if (content.isEmpty() && !prepared.tempPath.isEmpty()) {
+						QFile encodedFile(prepared.tempPath);
+						if (encodedFile.open(QIODevice::ReadOnly)) {
+							content = encodedFile.readAll();
+							encodedFile.close();
+						}
+						QFile::remove(prepared.tempPath);
+					}
+					if (content.isEmpty()) {
+						if (const auto onstack = weak.get()) {
+							onstack->showToast(
+								tr::ayu_attach_round_from_file_failed(
+									tr::now));
+						}
+						return;
+					}
+					auto round = Ui::RoundVideoResult{
+						.content = std::move(content),
+						.duration = prepared.duration,
+					};
+					showPreparedRound(std::move(round));
+				});
+			});
+		});
+	});
+	const auto parent = dialogParent
+		? dialogParent
+		: QPointer<QWidget>(Core::App().getFileDialogParent());
+	if (!parent) {
+		return;
+	}
+	FileDialog::GetOpenPath(
+		parent,
+		caption,
+		FileDialog::PhotoVideoFilesFilter(),
+		afterChosen);
+}
+
 std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 		not_null<QWidget*> parent,
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer,
 		Fn<Api::SendAction()> actionFactory,
-		Fn<void(bool)> attach) {
+		Fn<void(bool)> attach,
+		Fn<void(Ui::RoundVideoResult)> showPreparedVoice,
+		Fn<void(Ui::RoundVideoResult)> showPreparedRound) {
 	auto result = std::make_unique<Ui::DropdownMenu>(
 		parent,
 		st::dropdownMenuWithIcons);
@@ -2748,6 +2889,28 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 		raw->addAction(tr::lng_attach_document(tr::now), [=] {
 			attach(false);
 		}, &st::menuIconFile);
+	}
+	if (Data::CanSend(peer, ChatRestriction::SendVoiceMessages, false)
+		&& showPreparedVoice) {
+		++minimal;
+		raw->addAction(tr::ayu_attach_voice_from_file(tr::now), [=] {
+			ChooseAndSendVoiceFromFile(
+				controller,
+				actionFactory,
+				parent,
+				showPreparedVoice);
+		}, &st::menuIconSoundSelect);
+	}
+	if (Data::CanSend(peer, ChatRestriction::SendVideoMessages, false)
+		&& showPreparedRound) {
+		++minimal;
+		raw->addAction(tr::ayu_attach_round_from_file(tr::now), [=] {
+			ChooseAndSendRoundFromFile(
+				controller,
+				actionFactory,
+				parent,
+				showPreparedRound);
+		}, &st::menuIconVideoChat);
 	}
 	if (peer->canCreatePolls()) {
 		++minimal;

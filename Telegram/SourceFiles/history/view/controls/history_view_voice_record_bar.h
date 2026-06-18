@@ -79,6 +79,8 @@ public:
 		anim::type animated = anim::type::instant);
 
 	void startRecordingAndLock(bool round);
+	void showPreparedRound(Ui::RoundVideoResult data);
+	void showPreparedVoice(Ui::RoundVideoResult data);
 
 	void finishAnimating();
 	void hideAnimated();

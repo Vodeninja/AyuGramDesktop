@@ -3247,7 +3247,13 @@ void HistoryWidget::refreshAttachBotsMenu() {
 		controller(),
 		_history->peer,
 		[=] { return prepareSendAction({}); },
-		[=](bool compress) { chooseAttach(compress); });
+		[=](bool compress) { chooseAttach(compress); },
+		[=](Ui::RoundVideoResult data) {
+			_voiceRecordBar->showPreparedVoice(std::move(data));
+		},
+		[=](Ui::RoundVideoResult data) {
+			_voiceRecordBar->showPreparedRound(std::move(data));
+		});
 	if (!_attachBotsMenu) {
 		return;
 	}

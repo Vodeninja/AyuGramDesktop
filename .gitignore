@@ -68,6 +68,23 @@ settings.local.json
 # AI work folder (session-specific, not for version control)
 .ai
 
+# Local AI assistants / agent skills (machine-specific)
+.claude/
+.agents/
+
+# Runtime data from local debug runs
+**/tdata/
+**/DebugLogs/
+**/log_start*.txt
+
+# MSBuild / linker intermediates
+*.tlog
+*.lastbuildstate
+*.ilk
+*.iobj
+*.ipdb
+*.recipe
+
 # Generated changelog page (built by CI, deployed to GitHub Pages)
 /docs/changelog/
 

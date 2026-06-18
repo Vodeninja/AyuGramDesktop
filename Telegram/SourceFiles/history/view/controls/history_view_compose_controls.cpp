@@ -2335,6 +2335,14 @@ void ComposeControls::clearListenState() {
 	_voiceRecordBar->clearListenState();
 }
 
+void ComposeControls::showPreparedRound(Ui::RoundVideoResult data) {
+	_voiceRecordBar->showPreparedRound(std::move(data));
+}
+
+void ComposeControls::showPreparedVoice(Ui::RoundVideoResult data) {
+	_voiceRecordBar->showPreparedVoice(std::move(data));
+}
+
 void ComposeControls::clearChosenStarsForMessage() {
 	const auto empty = editStarsButtonShown()
 		? _minStarsCount.current()
@@ -3962,7 +3970,13 @@ void ComposeControls::updateAttachBotsMenu() {
 		_regularWindow,
 		_history->peer,
 		_sendActionFactory,
-		[=](bool compress) { _attachRequests.fire_copy(compress); });
+		[=](bool compress) { _attachRequests.fire_copy(compress); },
+		[=](Ui::RoundVideoResult data) {
+			_voiceRecordBar->showPreparedVoice(std::move(data));
+		},
+		[=](Ui::RoundVideoResult data) {
+			_voiceRecordBar->showPreparedRound(std::move(data));
+		});
 	if (!_attachBotsMenu) {
 		return;
 	}

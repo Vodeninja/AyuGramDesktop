@@ -73,6 +73,7 @@ struct PreparedList;
 struct SendStarButtonState;
 class ReactionFlyAnimation;
 class ChatStyle;
+struct RoundVideoResult;
 } // namespace Ui
 
 namespace Ui::Emoji {
@@ -261,6 +262,8 @@ public:
 	void clear();
 	void hidePanelsAnimated();
 	void clearListenState();
+	void showPreparedRound(Ui::RoundVideoResult data);
+	void showPreparedVoice(Ui::RoundVideoResult data);
 
 	void clearChosenStarsForMessage();
 	[[nodiscard]] int chosenStarsForMessage() const;

@@ -24,6 +24,7 @@ namespace Ui {
 class Show;
 class GenericBox;
 class DropdownMenu;
+struct RoundVideoResult;
 } // namespace Ui
 
 namespace Ui::BotWebView {
@@ -456,7 +457,9 @@ private:
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer,
 	Fn<Api::SendAction()> actionFactory,
-	Fn<void(bool)> attach);
+	Fn<void(bool)> attach,
+	Fn<void(Ui::RoundVideoResult)> showPreparedVoice = nullptr,
+	Fn<void(Ui::RoundVideoResult)> showPreparedRound = nullptr);
 
 class MenuBotIcon final : public Ui::RpWidget {
 public:

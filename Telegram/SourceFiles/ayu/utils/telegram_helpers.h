@@ -85,6 +85,13 @@ QString getDCName(int dc);
 QString getMediaSize(not_null<HistoryItem*> message);
 QString getMediaMime(not_null<HistoryItem*> message);
 QString getMediaName(not_null<HistoryItem*> message);
+enum class RoundVideoDateMark {
+	None,
+	Real,
+	Fake,
+};
+[[nodiscard]] RoundVideoDateMark RoundVideoDateMarkFromMessage(
+	not_null<HistoryItem*> item);
 QString getMediaResolution(not_null<HistoryItem*> message);
 QString getMediaDC(not_null<HistoryItem*> message);
 
